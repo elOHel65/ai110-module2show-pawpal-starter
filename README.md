@@ -44,31 +44,49 @@ pip install -r requirements.txt
 
 ## 🖥️ Sample Output
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
+Run the basic scheduling demo with `python main.py`:
 
 ```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+08:00 | Biscuit | Morning walk | 30 min | high
+09:00 | Mochi | Breakfast | 10 min | high
+17:00 | Mochi | Playtime | 15 min | medium
 ```
 
 ## 🧪 Testing PawPal+
 
 ```bash
+# Activate the virtual environment:
+source .venv/bin/activate
+
 # Run the full test suite:
-pytest
+python -m pytest
 
-# Run with coverage:
-pytest --cov
+# Run with coverage (requires pytest-cov):
+python -m pytest --cov
 ```
 
-Sample test output:
+Actual test output from the basic scheduling phase:
 
 ```
-# Paste your pytest output here
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0
+rootdir: /root/ai110-module2show-pawpal-starter
+plugins: anyio-4.15.1
+collected 6 items
+
+tests/test_pawpal.py ......                                              [100%]
+
+============================== 6 passed in 0.08s ===============================
+
+tests/test_pawpal.py ...... [100%]
+6 passed in 0.01s
 ```
+
+The tests cover completion, task storage, collection across pets, priority/time
+ordering, daily filtering and budget selection, and overlapping intervals.
+Recurring tasks are considered as stored; occurrence expansion is deferred to
+the smarter scheduling phase. Conflict detection reports overlapping pairs;
+the basic plan does not resolve them or assign times to unscheduled tasks.
 
 ## 📐 Smarter Scheduling
 
@@ -92,3 +110,10 @@ Describe your app in numbered steps so a reader can follow along without watchin
 5. <!-- Add more steps as needed -->
 
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+
+## System Design
+
+### Core User Actions
+1. Enter owner and pet information.
+2. Add or edit care tasks with a duration and priority.
+3. Generate a daily plan based on available time and priorities, with an explanation of the choices.

@@ -7,6 +7,7 @@ classDiagram
         +list~str~ preferences
         +list~Pet~ pets
         +add_pet(Pet pet) None
+        +get_all_tasks() list~Task~
     }
     class Pet {
         +str name
@@ -33,5 +34,5 @@ classDiagram
     Owner "1" o-- "0..*" Pet : pets
     Pet "1" o-- "0..*" Task : tasks
     Scheduler "0..*" --> "1" Owner : owner / time budget
-    Scheduler ..> Task : reads pets' tasks / returns plan
+    Scheduler ..> Task : retrieves via Owner.get_all_tasks / returns plan
     %% detect_conflicts returns list[tuple[Task, Task]] (overlapping pairs).
