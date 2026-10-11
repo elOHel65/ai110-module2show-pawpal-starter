@@ -1,4 +1,4 @@
-"""Run a small PawPal+ daily scheduling demo."""
+"""Demonstrate PawPal+ smarter scheduling with two pets."""
 
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
@@ -6,24 +6,42 @@ from zoneinfo import ZoneInfo
 from pawpal_system import Owner, Pet, Scheduler, Task
 
 
+def print_tasks(title: str, pairs: list[tuple[Pet, Task]]) -> None:
+    """Print pet-linked occurrences with times and completion status."""
+    print(title)
+    for pet, task in pairs:
+        start = task.scheduled_time.strftime("%Y-%m-%d %H:%M") if task.scheduled_time else "Unscheduled"
+        status = "complete" if task.completed else "incomplete"
+        print(f"{start} | {pet.name} | {task.name} | {task.duration_minutes} min | {task.priority} | {status}")
+
+
 def main() -> None:
-    """Print today's selected tasks chronologically with their pets."""
+    """Demonstrate sorting, filtering, recurrence history, and cross-pet conflicts."""
     today = datetime.now(ZoneInfo("America/Los_Angeles")).date()
-    owner = Owner("Jordan", available_minutes=60)
-    dog = Pet("Biscuit", "dog")
-    cat = Pet("Mochi", "cat")
+    owner = Owner("Jordan", available_minutes=90)
+    dog, cat = Pet("Biscuit", "dog"), Pet("Mochi", "cat")
     owner.add_pet(dog)
     owner.add_pet(cat)
-    dog.add_task(Task("Morning walk", 30, "high", datetime.combine(today, time(8))))
-    cat.add_task(Task("Breakfast", 10, "high", datetime.combine(today, time(9))))
+    # Deliberately add later tasks before earlier ones.
     cat.add_task(Task("Playtime", 15, "medium", datetime.combine(today, time(17))))
-    plan = Scheduler(owner).generate_daily_plan(today)
-    pet_names = {id(task): pet.name for pet in owner.pets for task in pet.tasks}
-    plan.sort(key=lambda task: (task.scheduled_time is None, task.scheduled_time))
-    print("Today's Schedule")
-    for task in plan:
-        start = task.scheduled_time.strftime("%H:%M") if task.scheduled_time else "Unscheduled"
-        print(f"{start} | {pet_names[id(task)]} | {task.name} | {task.duration_minutes} min | {task.priority}")
+    weekly = Task("Grooming", 20, "medium", datetime.combine(today, time(10)), "weekly")
+    dog.add_task(weekly)
+    daily = Task("Morning walk", 30, "high", datetime.combine(today, time(8)), "daily")
+    dog.add_task(daily)
+    cat.add_task(Task("Breakfast", 10, "high", datetime.combine(today, time(8, 15))))
+    scheduler = Scheduler(owner)
+    pet_by_task = {id(task): pet for pet, task in scheduler.filter_tasks()}
+    plan = scheduler.sort_by_time(scheduler.generate_daily_plan(today))
+    print_tasks("Today's Schedule", [(pet_by_task[id(task)], task) for task in plan])
+    print("Conflicts across pets")
+    for first, second in scheduler.detect_conflicts():
+        print(f"WARNING: {pet_by_task[id(first)].name}: {first.name} overlaps {pet_by_task[id(second)].name}: {second.name}")
+    dog.complete_task(daily, today)
+    dog.complete_task(weekly, today)
+    dog.complete_task(daily, today)  # Repeated completion creates no duplicate.
+    print_tasks("Biscuit's tasks (pet filter)", scheduler.filter_tasks(pet_name="Biscuit"))
+    print_tasks("Completed tasks (status filter)", scheduler.filter_tasks(completed=True))
+    print_tasks("Biscuit's next occurrences (both filters)", scheduler.filter_tasks("Biscuit", False))
 
 
 if __name__ == "__main__":

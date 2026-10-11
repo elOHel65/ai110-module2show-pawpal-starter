@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 
 
@@ -33,6 +33,29 @@ class Pet:
         """Add a care task to this pet's tasks."""
         self.tasks.append(task)
 
+    def complete_task(self, task: Task, completion_date: date) -> Task | None:
+        """Complete an owned occurrence once and append its next recurring occurrence."""
+        if not any(existing is task for existing in self.tasks):
+            raise ValueError("Task does not belong to this pet.")
+        if task.completed:
+            return None
+        next_task = None
+        if task.recurrence is not None:
+            if task.recurrence not in ("daily", "weekly") or task.scheduled_time is None:
+                raise ValueError("Recurring tasks require daily/weekly recurrence and a scheduled time.")
+            interval = 1 if task.recurrence == "daily" else 7
+            days_late = (completion_date - task.scheduled_time.date()).days
+            steps = max(1, days_late // interval + 1)
+            next_task = replace(
+                task,
+                scheduled_time=task.scheduled_time + timedelta(days=interval * steps),
+                completed=False,
+            )
+        task.mark_complete()
+        if next_task is not None:
+            self.add_task(next_task)
+        return next_task
+
 
 @dataclass
 class Task:
@@ -43,6 +66,13 @@ class Task:
     recurrence: str | None = None  # None means a one-off task.
     completed: bool = False
 
+    def __post_init__(self) -> None:
+        """Validate recurrence values and require a scheduled recurring occurrence."""
+        if self.recurrence not in (None, "daily", "weekly"):
+            raise ValueError("Recurrence must be None, daily, or weekly.")
+        if self.recurrence is not None and self.scheduled_time is None:
+            raise ValueError("Recurring tasks require a scheduled date and time.")
+
     def mark_complete(self) -> None:
         """Mark this task as completed."""
         self.completed = True
@@ -51,6 +81,22 @@ class Task:
 @dataclass
 class Scheduler:
     owner: Owner
+
+    def sort_by_time(self, tasks: list[Task]) -> list[Task]:
+        """Return tasks chronologically, placing unscheduled tasks last."""
+        return sorted(tasks, key=lambda task: (task.scheduled_time is None, task.scheduled_time))
+
+    def filter_tasks(
+        self, pet_name: str | None = None, completed: bool | None = None
+    ) -> list[tuple[Pet, Task]]:
+        """Filter across pets by exact name and/or completion, preserving pet/task pairs."""
+        return [
+            (pet, task)
+            for pet in self.owner.pets
+            if pet_name is None or pet.name == pet_name
+            for task in pet.tasks
+            if completed is None or task.completed == completed
+        ]
 
     def sort_tasks(self, tasks: list[Task]) -> list[Task]:
         """Sort by high, medium, low priority, then time with unscheduled last."""
@@ -64,8 +110,10 @@ class Scheduler:
             ),
         )
 
-    def detect_conflicts(self, tasks: list[Task]) -> list[tuple[Task, Task]]:
-        """Return pairs of tasks with overlapping scheduled intervals."""
+    def detect_conflicts(self, tasks: list[Task] | None = None) -> list[tuple[Task, Task]]:
+        """Return overlapping pairs from supplied tasks or all pets' incomplete tasks."""
+        if tasks is None:
+            tasks = [task for _, task in self.filter_tasks(completed=False)]
         scheduled = [task for task in tasks if task.scheduled_time is not None]
         conflicts = []
         for index, first in enumerate(scheduled):
@@ -82,7 +130,7 @@ class Scheduler:
             task for task in self.owner.get_all_tasks()
             if not task.completed
             and (
-                task.recurrence is not None
+                (task.recurrence is not None and task.scheduled_time.date() <= plan_date)
                 or task.scheduled_time is None
                 or task.scheduled_time.date() == plan_date
             )

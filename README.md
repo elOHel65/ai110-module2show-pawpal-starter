@@ -44,60 +44,131 @@ pip install -r requirements.txt
 
 ## 🖥️ Sample Output
 
-Run the basic scheduling demo with `python main.py`:
+Run the smarter scheduling demo with `python main.py`. Actual output from
+2026-10-11 (America/Los_Angeles):
 
 ```
-08:00 | Biscuit | Morning walk | 30 min | high
-09:00 | Mochi | Breakfast | 10 min | high
-17:00 | Mochi | Playtime | 15 min | medium
+Today's Schedule
+2026-10-11 08:00 | Biscuit | Morning walk | 30 min | high | incomplete
+2026-10-11 08:15 | Mochi | Breakfast | 10 min | high | incomplete
+2026-10-11 10:00 | Biscuit | Grooming | 20 min | medium | incomplete
+2026-10-11 17:00 | Mochi | Playtime | 15 min | medium | incomplete
+Conflicts across pets
+WARNING: Biscuit: Morning walk overlaps Mochi: Breakfast
+Biscuit's tasks (pet filter)
+2026-10-11 10:00 | Biscuit | Grooming | 20 min | medium | complete
+2026-10-11 08:00 | Biscuit | Morning walk | 30 min | high | complete
+2026-10-12 08:00 | Biscuit | Morning walk | 30 min | high | incomplete
+2026-10-18 10:00 | Biscuit | Grooming | 20 min | medium | incomplete
+Completed tasks (status filter)
+2026-10-11 10:00 | Biscuit | Grooming | 20 min | medium | complete
+2026-10-11 08:00 | Biscuit | Morning walk | 30 min | high | complete
+Biscuit's next occurrences (both filters)
+2026-10-12 08:00 | Biscuit | Morning walk | 30 min | high | incomplete
+2026-10-18 10:00 | Biscuit | Grooming | 20 min | medium | incomplete
 ```
 
 ## 🧪 Testing PawPal+
 
 ```bash
-# Activate the virtual environment:
 source .venv/bin/activate
-
-# Run the full test suite:
 python -m pytest
-
-# Run with coverage (requires pytest-cov):
-python -m pytest --cov
 ```
 
-Actual test output from the basic scheduling phase:
+Actual test results:
 
 ```
 ============================= test session starts ==============================
 platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0
 rootdir: /root/ai110-module2show-pawpal-starter
 plugins: anyio-4.15.1
-collected 6 items
+collected 20 items
 
-tests/test_pawpal.py ......                                              [100%]
+tests/test_pawpal.py ....................                                [100%]
 
-============================== 6 passed in 0.08s ===============================
-
-tests/test_pawpal.py ...... [100%]
-6 passed in 0.01s
+============================== 20 passed in 0.04s ==============================
 ```
 
-The tests cover completion, task storage, collection across pets, priority/time
-ordering, daily filtering and budget selection, and overlapping intervals.
-Recurring tasks are considered as stored; occurrence expansion is deferred to
-the smarter scheduling phase. Conflict detection reports overlapping pairs;
-the basic plan does not resolve them or assign times to unscheduled tasks.
+The 20 test cases cover task storage and completion, collection across pets,
+priority selection and budgets, chronological sorting, pet/status filters,
+daily and weekly recurrence, overdue and early completion, repeated completion,
+recurrence validation, ownership validation, future-date exclusion, cross-pet
+overlaps, and back-to-back intervals. A Streamlit interaction check also verified
+recurrence form submission, completion history, successor creation, and session
+persistence across reruns.
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `Scheduler.sort_tasks()`, `Scheduler.sort_by_time()` | Select high/medium/low priority first; display chronologically with unscheduled tasks last. |
+| Filtering | `Scheduler.filter_tasks()`, `Scheduler.generate_daily_plan()` | Exact pet name and/or completion filters return `(Pet, Task)` pairs; plans skip completed and future occurrences and continue past tasks that exceed the remaining budget. |
+| Conflict handling | `Scheduler.detect_conflicts()` | Defaults to incomplete tasks across all pets; returns overlapping task pairs. Touching boundaries are allowed. CLI/UI warnings identify pets; no times are changed. |
+| Recurring tasks | `Task.__post_init__()`, `Pet.complete_task()` | Validate None/daily/weekly, require recurring due times, preserve history, and create one next occurrence. Repeated completion is a no-op. |
+
+### Sorting and task ownership
+
+`sorted(tasks, key=lambda task: (...))` returns a new list without changing the
+input. The lambda computes a comparison key for each task. In `sort_by_time()`,
+that key is `(task.scheduled_time is None, task.scheduled_time)`: `False` sorts
+before `True`, so dated tasks come first, then their datetimes determine order.
+Equal keys preserve input order. Priority selection uses `sort_tasks()` before
+budget allocation; `sort_by_time()` only orders the selected tasks for display.
+
+Zero-padded 24-hour `HH:MM` strings sort chronologically within a single day
+because hours and minutes have fixed widths (for example, `08:05` precedes
+`10:00`). We retain datetime values because they also carry dates and support
+interval comparisons and recurrence arithmetic. UI/CLI inputs use local naive
+datetimes; the demo's definition of today uses America/Los_Angeles.
+
+Filtering preserves actual pet/task objects in `(Pet, Task)` pairs, so callers
+can identify ownership even when task names repeat. `None` means no filter;
+`completed=False` means incomplete only. Duplicate pet names match every pet
+with that exact name. `Owner.get_all_tasks()` still supplies daily-plan tasks.
+
+### Recurrence policy
+
+Use `Pet.complete_task(task, completion_date)` for user-facing completion. It
+checks ownership by identity, keeps the completed original, and appends a new
+incomplete Task with the same name, duration, priority, and recurrence. A task
+due on the completion day advances by `timedelta(days=1)` for daily recurrence
+or `timedelta(days=7)` for weekly recurrence, preserving its scheduled clock
+time. One-off tasks create no successor. `Task.mark_complete()` remains the
+low-level flag setter called by the recurrence-aware operation.
+
+For overdue recurring tasks, skip missed dates and create the first occurrence
+on the original cadence strictly after the completion day. For example, a weekly
+task due Sunday October 11 and completed Tuesday October 20 advances to Sunday
+October 25 at the original clock time. Early completion advances once from the
+original due date. Completing the same original again creates no duplicate.
+Only one pending successor is created, rather than expanding a backlog.
+
+Daily plans include overdue unfinished recurring occurrences using their actual
+stored date, exclude future recurring occurrences, and include one-offs only on
+their scheduled date (or when unscheduled). Completion does not silently move
+the historical task's time. Conflict detection reports stored intervals, not
+hypothetical rescheduled slots. Unscheduled tasks have no interval to compare.
+
+### Algorithm review
+
+`detect_conflicts()` checks each pair once and compares half-open intervals:
+`first_start < second_end and second_start < first_end`. The strict comparisons
+make back-to-back tasks valid. This is easy to read and works across pets;
+completed history is excluded in the default call. It costs O(n²) comparisons
+and O(k) output space for k reported conflicts, which is reasonable for a small
+household schedule.
+
+One alternative is a sweep over tasks sorted by start time, maintaining active
+intervals ordered by end time. Expire intervals ending at or before the next
+start and report overlaps with the remaining active tasks. With suitable data
+structures this costs O(n log n + k), but adds sorting and active-set management
+that is harder to read and test. Dense schedules can still produce O(n²)
+conflicts. The current implementation is retained; this alternative is a choice
+for a later change, not an automatic replacement.
+
+Session state retains the Owner, pets, tasks, and completion history between
+Streamlit reruns in the current session. It is not permanent storage; a new
+session or server restart can lose this data.
 
 ## 📸 Demo Walkthrough
 

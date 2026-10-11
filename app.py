@@ -88,6 +88,7 @@ with st.form("add_task"):
         duration = st.number_input("Duration (minutes)", min_value=1, max_value=240, value=20)
     with col3:
         priority = st.selectbox("Priority", ["low", "medium", "high"], index=2)
+    recurrence = st.selectbox("Recurrence", ["None", "daily", "weekly"])
     scheduled = st.checkbox("Set a scheduled time", value=True)
     task_date = st.date_input("Task date", value=today)
     task_time = st.time_input("Task time", value=time(8))
@@ -102,13 +103,34 @@ if add_task:
         st.error("Enter a task name.")
     elif duration <= 0:
         st.error("Task duration must be positive.")
+    elif recurrence != "None" and not scheduled:
+        st.error("Recurring tasks require a scheduled date and time.")
     else:
         task = Task(
             name=task_title.strip(), duration_minutes=int(duration), priority=priority,
             scheduled_time=datetime.combine(task_date, task_time) if scheduled else None,
+            recurrence=None if recurrence == "None" else recurrence,
         )
         owner.pets[pet_index].add_task(task)
         st.success(f"Added {task.name} for {owner.pets[pet_index].name}.")
+
+st.markdown("### Complete a task")
+completion_date = st.date_input("Completion date", value=today)
+st.caption("Recurring tasks keep their history and add the next occurrence on the same cadence after completion.")
+for pet_index, pet in enumerate(owner.pets):
+    for task_index, task in enumerate(list(pet.tasks)):
+        if not task.completed:
+            due = task.scheduled_time.strftime("%Y-%m-%d %H:%M") if task.scheduled_time else "Unscheduled"
+            if st.button(
+                f"Complete {pet.name}: {task.name} ({due})",
+                key=f"complete_{pet_index}_{task_index}",
+            ):
+                try:
+                    pet.complete_task(task, completion_date)
+                except ValueError as error:
+                    st.error(str(error))
+                else:
+                    st.rerun()
 
 st.markdown("### Saved pets and tasks")
 if owner.pets:
@@ -122,6 +144,7 @@ if owner.pets:
                     "Priority": task.priority,
                     "Scheduled": task.scheduled_time.strftime("%Y-%m-%d %H:%M") if task.scheduled_time else "Unscheduled",
                     "Completed": task.completed,
+                    "Recurrence": task.recurrence or "None",
                 }
                 for task in pet.tasks
             ])
@@ -129,6 +152,14 @@ if owner.pets:
             st.info("No tasks saved for this pet yet.")
 else:
     st.info("No pets saved yet. Add a pet above.")
+
+scheduler = Scheduler(owner)
+pet_names = {id(task): pet.name for pet, task in scheduler.filter_tasks()}
+for first, second in scheduler.detect_conflicts():
+    st.warning(
+        f"Overlapping tasks: {first.name} ({pet_names[id(first)]}, {first.scheduled_time:%Y-%m-%d %H:%M}) "
+        f"and {second.name} ({pet_names[id(second)]}, {second.scheduled_time:%Y-%m-%d %H:%M})."
+    )
 
 st.divider()
 st.subheader("Build Schedule")
@@ -145,13 +176,13 @@ if st.button("Generate Plan"):
     else:
         scheduler = Scheduler(owner)
         plan = scheduler.generate_daily_plan(plan_date)
-        plan = sorted(plan, key=lambda task: (task.scheduled_time is None, task.scheduled_time))
+        plan = scheduler.sort_by_time(plan)
         pet_names = {id(task): pet.name for pet in owner.pets for task in pet.tasks}
         st.write(f"**Schedule for {plan_date:%Y-%m-%d}**")
         if plan:
             st.table([
                 {
-                    "Time": task.scheduled_time.strftime("%H:%M") if task.scheduled_time else "Unscheduled",
+                    "Time": task.scheduled_time.strftime("%Y-%m-%d %H:%M") if task.scheduled_time else "Unscheduled",
                     "Pet": pet_names[id(task)],
                     "Task": task.name,
                     "Duration (minutes)": task.duration_minutes,
@@ -160,7 +191,5 @@ if st.button("Generate Plan"):
                 for task in plan
             ])
             st.caption(f"Selected {sum(task.duration_minutes for task in plan)} of {owner.available_minutes} available minutes.")
-            for first, second in scheduler.detect_conflicts(plan):
-                st.warning(f"Overlapping tasks: {first.name} ({pet_names[id(first)]}) and {second.name} ({pet_names[id(second)]}).")
         else:
             st.info("No unfinished tasks fit this date and time budget.")
