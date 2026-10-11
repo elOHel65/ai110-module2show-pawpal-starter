@@ -14,8 +14,11 @@ Scheduler organizes tasks into a daily plan using the owner's
 constraints.
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+AI suggested adding pet identification, availability windows,
+recurring-task completion history, and explanations for skipped
+tasks. I kept the initial skeleton simple and deferred these
+changes. During implementation, I will define priority ordering
+and tie-breaking so schedules are predictable.
 
 ---
 
