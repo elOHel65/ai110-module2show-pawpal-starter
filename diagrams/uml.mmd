@@ -1,15 +1,48 @@
 classDiagram
-    %% Replace the placeholders below with your actual classes, attributes, methods, and relationships.
-    %% Keep this file updated so it matches your final implementation.
-
-    class ClassName {
-        +type attribute
-        +method() returnType
+    %% Optional scheduled_time is an absolute start datetime.
+    %% The daily plan is a returned list of Tasks, not a separate class.
+    class Owner {
+        +str name
+        +int available_minutes
+        +list~str~ preferences
+        +list~Pet~ pets
+        +add_pet(Pet pet) None
+        +get_all_tasks() list~Task~
     }
-
-    class AnotherClass {
-        +type attribute
-        +method() returnType
+    class Pet {
+        +str name
+        +str species
+        +list~str~ care_needs
+        +list~Task~ tasks
+        +add_task(Task task) None
+        +complete_task(Task task, date completion_date) Optional~Task~
     }
-
-    ClassName --> AnotherClass : relationship
+    class Task {
+        +str name
+        +int duration_minutes
+        +str priority
+        +Optional~datetime~ scheduled_time
+        +Optional~str~ recurrence
+        +bool completed
+        +__post_init__() None
+        +mark_complete() None
+        +edit(str name, int duration_minutes, str priority) None
+    }
+    class Scheduler {
+        +Owner owner
+        +sort_tasks(list~Task~ tasks) list~Task~
+        +sort_by_time(list~Task~ tasks) list~Task~
+        +filter_tasks(Optional~str~ pet_name, Optional~bool~ completed) list~tuple~
+        +detect_conflicts(Optional~list~ tasks) list~tuple~
+        +generate_daily_plan(date plan_date) list~Task~
+    }
+    Owner "1" o-- "0..*" Pet : pets
+    Pet "1" o-- "0..*" Task : tasks
+    Scheduler "0..*" --> "1" Owner : owner / time budget
+    Scheduler ..> Pet : filters pet/task pairs
+    Scheduler ..> Task : retrieves via Owner.get_all_tasks / returns plan
+    %% detect_conflicts returns list[tuple[Task, Task]] (overlapping pairs).
+    %% filter_tasks returns list[tuple[Pet, Task]]; None filters mean any value.
+    %% detect_conflicts defaults to all pets' incomplete tasks when tasks is None.
+    %% Pet.complete_task returns the next occurrence or None; originals remain in history.
+    %% Task recurrence is None, daily, or weekly; recurring tasks require datetime.
