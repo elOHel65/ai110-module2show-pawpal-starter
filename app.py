@@ -39,11 +39,14 @@ Use PawPal+ to:
 
 st.divider()
 
-st.subheader("Quick Demo Inputs")
+st.subheader("Owner and pets")
 
 if "owner" not in st.session_state:
     st.session_state.owner = Owner("Jordan", available_minutes=60)
 owner = st.session_state.owner
+scheduler = Scheduler(owner)
+if "completion_message" in st.session_state:
+    st.success(st.session_state.pop("completion_message"))
 
 today = datetime.now(ZoneInfo("America/Los_Angeles")).date()
 owner_name = st.text_input("Owner name", value=owner.name)
@@ -114,11 +117,42 @@ if add_task:
         owner.pets[pet_index].add_task(task)
         st.success(f"Added {task.name} for {owner.pets[pet_index].name}.")
 
+st.markdown("### Edit a task")
+edit_pairs = scheduler.filter_tasks()
+if edit_pairs:
+    edit_labels = [
+        f"{pet.name}: {task.name} "
+        f"({task.scheduled_time.strftime('%Y-%m-%d %H:%M') if task.scheduled_time else 'Unscheduled'}) "
+        f"— Task {index + 1}"
+        for index, (pet, task) in enumerate(edit_pairs)
+    ]
+    edit_index = st.selectbox(
+        "Task to edit", range(len(edit_pairs)),
+        format_func=lambda index: edit_labels[index],
+    )
+    edit_pet, edit_task = edit_pairs[edit_index]
+    st.caption("Edits apply to this occurrence only. Its pet, scheduled time, recurrence, and completion status stay the same.")
+    with st.form(f"edit_task_{edit_index}_{id(edit_task)}"):
+        edit_title = st.text_input("Edited task title", value=edit_task.name)
+        edit_duration = st.number_input("Edited duration (minutes)", min_value=1, value=edit_task.duration_minutes, step=1)
+        edit_priority = st.selectbox("Edited priority", ["low", "medium", "high"], index=["low", "medium", "high"].index(edit_task.priority))
+        save_task = st.form_submit_button("Save Changes")
+    if save_task:
+        try:
+            edit_task.edit(edit_title, edit_duration, edit_priority)
+        except ValueError as error:
+            st.error(str(error))
+        else:
+            st.success(f"Updated {edit_task.name} for {edit_pet.name}.")
+else:
+    st.info("Add a task before editing.")
+
 st.markdown("### Complete a task")
 completion_date = st.date_input("Completion date", value=today)
 st.caption("Recurring tasks keep their history and add the next occurrence on the same cadence after completion.")
 for pet_index, pet in enumerate(owner.pets):
-    for task_index, task in enumerate(list(pet.tasks)):
+    for task in scheduler.sort_by_time(list(pet.tasks)):
+        task_index = next(index for index, saved in enumerate(pet.tasks) if saved is task)
         if not task.completed:
             due = task.scheduled_time.strftime("%Y-%m-%d %H:%M") if task.scheduled_time else "Unscheduled"
             if st.button(
@@ -126,36 +160,52 @@ for pet_index, pet in enumerate(owner.pets):
                 key=f"complete_{pet_index}_{task_index}",
             ):
                 try:
-                    pet.complete_task(task, completion_date)
+                    next_task = pet.complete_task(task, completion_date)
                 except ValueError as error:
                     st.error(str(error))
                 else:
+                    message = f"Completed {task.name} for {pet.name}."
+                    if next_task is not None:
+                        message += f" Next occurrence: {next_task.scheduled_time:%Y-%m-%d %H:%M}."
+                    st.session_state.completion_message = message
                     st.rerun()
 
 st.markdown("### Saved pets and tasks")
 if owner.pets:
-    for pet in owner.pets:
-        st.write(f"**{pet.name}** ({pet.species})")
-        if pet.tasks:
-            st.table([
-                {
-                    "Task": task.name,
-                    "Duration (minutes)": task.duration_minutes,
-                    "Priority": task.priority,
-                    "Scheduled": task.scheduled_time.strftime("%Y-%m-%d %H:%M") if task.scheduled_time else "Unscheduled",
-                    "Completed": task.completed,
-                    "Recurrence": task.recurrence or "None",
-                }
-                for task in pet.tasks
-            ])
-        else:
-            st.info("No tasks saved for this pet yet.")
+    st.write("Saved pets: " + ", ".join(f"{pet.name} ({pet.species})" for pet in owner.pets))
+    pet_filter = st.selectbox(
+        "Filter by pet", [None, *dict.fromkeys(pet.name for pet in owner.pets)],
+        format_func=lambda name: "All pets" if name is None else name,
+    )
+    status_filter = st.selectbox("Completion status", ["All", "Incomplete", "Completed"])
+    completed_filter = {"All": None, "Incomplete": False, "Completed": True}[status_filter]
+    pairs = scheduler.filter_tasks(pet_name=pet_filter, completed=completed_filter)
+    pet_by_task = {id(task): pet for pet, task in pairs}
+    if pairs:
+        st.table([
+            {
+                "Pet": pet_by_task[id(task)].name,
+                "Task": task.name,
+                "Duration (minutes)": task.duration_minutes,
+                "Priority": task.priority,
+                "Scheduled": task.scheduled_time.strftime("%Y-%m-%d %H:%M") if task.scheduled_time else "Unscheduled",
+                "Status": "Completed" if task.completed else "Incomplete",
+                "Recurrence": task.recurrence or "None",
+            }
+            for task in scheduler.sort_by_time([task for _, task in pairs])
+        ])
+    else:
+        st.info("No tasks match these filters. Add tasks or change the filters.")
 else:
     st.info("No pets saved yet. Add a pet above.")
 
-scheduler = Scheduler(owner)
+st.markdown("### Conflict warnings")
+st.caption("Checks all saved incomplete tasks across pets, regardless of table filters or plan budget. Times are not changed automatically.")
 pet_names = {id(task): pet.name for pet, task in scheduler.filter_tasks()}
-for first, second in scheduler.detect_conflicts():
+conflicts = scheduler.detect_conflicts()
+if not conflicts:
+    st.info("No overlapping scheduled tasks.")
+for first, second in conflicts:
     st.warning(
         f"Overlapping tasks: {first.name} ({pet_names[id(first)]}, {first.scheduled_time:%Y-%m-%d %H:%M}) "
         f"and {second.name} ({pet_names[id(second)]}, {second.scheduled_time:%Y-%m-%d %H:%M})."
@@ -163,7 +213,7 @@ for first, second in scheduler.detect_conflicts():
 
 st.divider()
 st.subheader("Build Schedule")
-st.caption("Select tasks by priority and time within your daily time budget.")
+st.caption("Select high, medium, then low priority tasks within your budget; display the selected tasks chronologically. Table filters do not change the plan.")
 plan_date = st.date_input("Plan date", value=today)
 
 if st.button("Generate Plan"):
@@ -180,6 +230,7 @@ if st.button("Generate Plan"):
         pet_names = {id(task): pet.name for pet in owner.pets for task in pet.tasks}
         st.write(f"**Schedule for {plan_date:%Y-%m-%d}**")
         if plan:
+            st.success("Daily plan generated.")
             st.table([
                 {
                     "Time": task.scheduled_time.strftime("%Y-%m-%d %H:%M") if task.scheduled_time else "Unscheduled",

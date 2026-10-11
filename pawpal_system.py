@@ -77,6 +77,18 @@ class Task:
         """Mark this task as completed."""
         self.completed = True
 
+    def edit(self, name: str, duration_minutes: int, priority: str) -> None:
+        """Validate and update editable details without replacing this occurrence."""
+        if not name.strip():
+            raise ValueError("Enter a task name.")
+        if type(duration_minutes) is not int or duration_minutes <= 0:
+            raise ValueError("Task duration must be a positive whole number.")
+        if priority not in ("low", "medium", "high"):
+            raise ValueError("Priority must be low, medium, or high.")
+        self.name = name.strip()
+        self.duration_minutes = duration_minutes
+        self.priority = priority
+
 
 @dataclass
 class Scheduler:

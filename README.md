@@ -1,26 +1,21 @@
 # PawPal+ (Module 2 Project)
 
-You are building **PawPal+**, a Streamlit app that helps a pet owner plan care tasks for their pet.
+**PawPal+** is a Streamlit app for planning care tasks across multiple pets.
 
-## Scenario
+## Features
 
-A busy pet owner needs help staying consistent with pet care. They want an assistant that can:
+- Save owner availability and multiple pets in the current session.
+- Add tasks with duration, priority, optional date/time, and None/daily/weekly recurrence.
+- Edit an existing task's title, duration, and priority with input validation, preserving its pet association.
+- Filter saved tasks by pet name and completion status; display tasks chronologically with unscheduled tasks last.
+- Generate a daily plan using high/medium/low priority and the available-minute budget, then display it chronologically.
+- Warn about overlapping incomplete tasks with pet names, task names, and scheduled times.
+- Complete tasks while retaining history and creating one next recurring occurrence.
+- Verify core scheduling behavior with repeatable backend tests.
 
-- Track pet care tasks (walks, feeding, meds, enrichment, grooming, etc.)
-- Consider constraints (time available, priority, owner preferences)
-- Produce a daily plan and explain why it chose that plan
-
-Your job is to design the system first (UML), then implement the logic in Python, then connect it to the Streamlit UI.
-
-## What you will build
-
-Your final app should:
-
-- Let a user enter basic owner + pet info
-- Let a user add/edit tasks (duration + priority at minimum)
-- Generate a daily schedule/plan based on constraints and priorities
-- Display the plan clearly (and ideally explain the reasoning)
-- Include tests for the most important scheduling behaviors
+Preferences and care needs are stored in the model but do not influence scheduling.
+Permanent storage, automatic conflict resolution, and per-task
+skip explanations are not implemented.
 
 ## Getting started
 
@@ -29,18 +24,28 @@ Your final app should:
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
-### Suggested workflow
+### Run
 
-1. Read the scenario carefully and identify requirements and edge cases.
-2. Draft a UML diagram (classes, attributes, methods, relationships).
-3. Convert UML into Python class stubs (no logic yet).
-4. Implement scheduling logic in small increments.
-5. Add tests to verify key behaviors.
-6. Connect your logic to the Streamlit UI in `app.py`.
-7. Refine UML so it matches what you actually built.
+Use Python 3.10 or newer. After setup, keep the virtual environment activated
+and run these commands from the project root:
+
+```bash
+python -m streamlit run app.py
+```
+
+Open the local URL printed by Streamlit (normally `http://localhost:8501`).
+For the terminal demo or backend tests:
+
+```bash
+python main.py
+python -m pytest
+```
+
+If your system provides only `python3`, use `python3 -m venv .venv` for the
+initial setup; activation makes `python` available inside the environment.
 
 ## 🖥️ Sample Output
 
@@ -54,15 +59,15 @@ Today's Schedule
 2026-10-11 10:00 | Biscuit | Grooming | 20 min | medium | incomplete
 2026-10-11 17:00 | Mochi | Playtime | 15 min | medium | incomplete
 Conflicts across pets
-WARNING: Biscuit: Morning walk overlaps Mochi: Breakfast
+WARNING: Biscuit: Morning walk (2026-10-11 08:00) overlaps Mochi: Breakfast (2026-10-11 08:15)
 Biscuit's tasks (pet filter)
-2026-10-11 10:00 | Biscuit | Grooming | 20 min | medium | complete
 2026-10-11 08:00 | Biscuit | Morning walk | 30 min | high | complete
+2026-10-11 10:00 | Biscuit | Grooming | 20 min | medium | complete
 2026-10-12 08:00 | Biscuit | Morning walk | 30 min | high | incomplete
 2026-10-18 10:00 | Biscuit | Grooming | 20 min | medium | incomplete
 Completed tasks (status filter)
-2026-10-11 10:00 | Biscuit | Grooming | 20 min | medium | complete
 2026-10-11 08:00 | Biscuit | Morning walk | 30 min | high | complete
+2026-10-11 10:00 | Biscuit | Grooming | 20 min | medium | complete
 Biscuit's next occurrences (both filters)
 2026-10-12 08:00 | Biscuit | Morning walk | 30 min | high | incomplete
 2026-10-18 10:00 | Biscuit | Grooming | 20 min | medium | incomplete
@@ -82,14 +87,15 @@ Actual test results:
 platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0
 rootdir: /root/ai110-module2show-pawpal-starter
 plugins: anyio-4.15.1
-collected 26 items
+collected 33 items
 
-tests/test_pawpal.py ..........................                          [100%]
+tests/test_app.py .                                                      [  3%]
+tests/test_pawpal.py ................................                    [100%]
 
-============================== 26 passed in 0.08s ==============================
+============================== 33 passed in 0.92s ==============================
 ```
 
-The 26 test cases use fixed dates and cover task storage and completion,
+The 32 backend test cases use fixed dates and cover task storage and completion,
 collection across pets, chronological sorting of out-of-order input, pet/status
 filters, daily and weekly recurrence (including an incomplete next-day task when
 daily care is completed on its due date), recurrence and ownership validation,
@@ -97,13 +103,18 @@ and future-date exclusion. Conflict tests cover overlaps across pets, identical
 start times, completed-history exclusion, and back-to-back intervals. Empty
 owners and pets produce empty schedules. Budget tests cover zero available
 minutes, one minute short, exact fits, skipping oversized tasks, and excluding
-completed tasks from both plans and budget consumption.
+completed tasks from both plans and budget consumption. Editing tests verify
+that valid updates affect plan selection, retain ownership and recurrence, and
+reject invalid inputs without partial changes. A separate Streamlit test verifies
+selection, validation feedback, saving edits, and state across reruns (33 total cases).
 
 **Confidence: 4/5 stars (★★★★☆)** for the tested backend scheduling behavior.
 All automated tests pass, but automated backend tests do not guarantee every UI
-behavior. This run did not check Streamlit forms, rendering, or session-state
-interactions; browser/UI testing is still needed. Invalid durations/priorities
-and timezone-aware scheduling are also outside this suite's coverage.
+behavior. A Streamlit AppTest smoke check verified pet/task form submission, recurrence
+selection, pet/status filters, conflict warnings, plan generation, completion
+feedback, and session state across reruns. This does not verify browser layout,
+accessibility, or every UI interaction; browser testing is still needed. Invalid durations/priorities at initial backend task construction and
+timezone-aware scheduling are outside this suite's coverage.
 
 ## 📐 Smarter Scheduling
 
@@ -180,19 +191,26 @@ session or server restart can lose this data.
 
 ## 📸 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
-
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
-
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+1. Start the app, enter an owner name, and set the daily budget to 90 minutes. Add Biscuit (dog) and Mochi (cat).
+2. Select Biscuit and add Morning walk: 30 minutes, high priority, daily recurrence, scheduled today at 08:00. Add Mochi's Breakfast: 10 minutes, high priority, no recurrence, today at 08:15. Add a later task before an earlier one to see chronological ordering.
+3. In Edit a task, choose Morning walk. Change its title to Morning care, duration to 25 minutes, and priority to medium, then click Save Changes. Confirm the success message and updated table. Blank titles are rejected and durations must be positive whole numbers. Edits affect only the selected occurrence; its pet, date/time, recurrence, and completion status stay unchanged. Restore the original values if you want to follow the example below exactly.
+4. In Saved pets and tasks, select a pet and choose All, Incomplete, or Completed. The table uses both filters. Return to All pets / All to view everything.
+5. Choose today's Plan date and click Generate Plan. Tasks are selected by priority within the budget and displayed in chronological order, with unscheduled tasks last. The caption shows selected minutes. Table filters do not change the plan.
+6. Inspect Conflict warnings: Biscuit's Morning walk at 08:00 overlaps Mochi's Breakfast at 08:15. Warnings check all saved incomplete tasks, including tasks outside the selected plan. They do not move or remove tasks.
+7. Set Completion date to today and click Complete for Morning walk. A success message reports the next occurrence. Filter Completed to see the original and Incomplete to see tomorrow's walk at 08:00. Pets, tasks, and history remain available through reruns in the current session.
 
 ## System Design
 
+The [final UML](diagrams/uml_final.mmd) lists the backend's attributes, methods,
+and relationships. The [original working diagram](diagrams/uml_draft.mmd) is
+preserved unchanged. It already contains the four classes and scheduling methods;
+the final diagram adds Task.edit() and makes the scheduler's dependency on Pet explicit.
+Owner aggregates pets, Pet aggregates tasks, and Scheduler references Owner and
+uses Pet/Task objects for filtering and planning. `diagrams/uml.mmd` now mirrors
+the final diagram instead of containing template classes.
+
+
 ### Core User Actions
 1. Enter owner and pet information.
-2. Add or edit care tasks with a duration and priority.
-3. Generate a daily plan based on available time and priorities, with an explanation of the choices.
+2. Add care tasks with a duration, priority, optional time, and recurrence.
+3. Generate a daily plan based on available time and priorities, inspect conflicts, and complete tasks.

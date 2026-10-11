@@ -215,3 +215,33 @@ def test_daily_budget_boundaries_exclude_completed_tasks(budget, included):
     plan = scheduler.generate_daily_plan(due.date())
     assert plan == ([pending] if included else [])
     assert sum(task.duration_minutes for task in plan) <= budget
+
+
+def test_edit_preserves_owned_occurrence_and_changes_plan_selection():
+    """Editing changes budget selection while retaining identity and recurrence details."""
+    due = datetime(2026, 10, 11, 8)
+    task = Task("Walk", 30, "low", due, "daily")
+    pet = Pet("Biscuit", "dog", tasks=[task])
+    other_pet = Pet("Mochi", "cat")
+    scheduler = Scheduler(Owner("Jordan", 20, pets=[pet, other_pet]))
+    assert scheduler.generate_daily_plan(due.date()) == []
+    task.edit("  Short walk  ", 15, "high")
+    assert (task.name, task.duration_minutes, task.priority) == ("Short walk", 15, "high")
+    assert pet.tasks[0] is task and other_pet.tasks == []
+    assert task.scheduled_time == due and task.recurrence == "daily" and not task.completed
+    assert scheduler.generate_daily_plan(due.date()) == [task]
+    successor = pet.complete_task(task, due.date())
+    assert (successor.name, successor.duration_minutes, successor.priority) == ("Short walk", 15, "high")
+
+
+@pytest.mark.parametrize("name,duration,priority", [
+    ("  ", 15, "high"), ("Walk", 0, "high"), ("Walk", -1, "high"),
+    ("Walk", 1.5, "high"), ("Walk", 15, "urgent"),
+])
+def test_invalid_edit_leaves_task_unchanged(name, duration, priority):
+    """Invalid edits reject the whole update instead of partially changing the task."""
+    task = Task("Original", 20, "medium", datetime(2026, 10, 11, 8), "daily", True)
+    before = vars(task).copy()
+    with pytest.raises(ValueError):
+        task.edit(name, duration, priority)
+    assert vars(task) == before
