@@ -178,3 +178,40 @@ def test_cross_pet_conflicts_exclude_history_and_allow_back_to_back():
     assert scheduler.detect_conflicts() == [(first, overlap)]
     assert scheduler.detect_conflicts([first, adjacent]) == []
     assert first.scheduled_time == datetime(2026, 10, 11, 8)
+
+
+def test_identical_start_times_produce_conflict():
+    """Two distinct tasks starting at exactly the same time conflict."""
+    start = datetime(2026, 10, 11, 8)
+    first = Task("Walk", 30, "high", start)
+    second = Task("Feed", 10, "medium", start)
+    scheduler = Scheduler(Owner("Jordan", 60))
+    assert scheduler.detect_conflicts([first, second]) == [(first, second)]
+
+
+@pytest.mark.parametrize("with_pet", [False, True], ids=["no-pets", "pet-with-no-tasks"])
+def test_empty_owner_schedules(with_pet):
+    """Owners without pets or with a taskless pet have empty scheduling results."""
+    owner = Owner("Jordan", 60)
+    if with_pet:
+        pet = Pet("Mochi", "cat")
+        owner.add_pet(pet)
+        assert pet.tasks == []
+    scheduler = Scheduler(owner)
+    assert owner.get_all_tasks() == []
+    assert scheduler.filter_tasks() == []
+    assert scheduler.generate_daily_plan(date(2026, 10, 11)) == []
+    assert scheduler.detect_conflicts() == []
+
+
+@pytest.mark.parametrize("budget,included", [(0, False), (19, False), (20, True)])
+def test_daily_budget_boundaries_exclude_completed_tasks(budget, included):
+    """A pending task fits exactly at its duration; completed work uses no budget."""
+    due = datetime(2026, 10, 11, 8)
+    done = Task("Completed care", 10, "high", due, completed=True)
+    pending = Task("Walk", 20, "medium", due)
+    pet = Pet("Biscuit", "dog", tasks=[done, pending])
+    scheduler = Scheduler(Owner("Jordan", budget, pets=[pet]))
+    plan = scheduler.generate_daily_plan(due.date())
+    assert plan == ([pending] if included else [])
+    assert sum(task.duration_minutes for task in plan) <= budget

@@ -82,20 +82,28 @@ Actual test results:
 platform linux -- Python 3.10.12, pytest-9.1.1, pluggy-1.6.0
 rootdir: /root/ai110-module2show-pawpal-starter
 plugins: anyio-4.15.1
-collected 20 items
+collected 26 items
 
-tests/test_pawpal.py ....................                                [100%]
+tests/test_pawpal.py ..........................                          [100%]
 
-============================== 20 passed in 0.04s ==============================
+============================== 26 passed in 0.08s ==============================
 ```
 
-The 20 test cases cover task storage and completion, collection across pets,
-priority selection and budgets, chronological sorting, pet/status filters,
-daily and weekly recurrence, overdue and early completion, repeated completion,
-recurrence validation, ownership validation, future-date exclusion, cross-pet
-overlaps, and back-to-back intervals. A Streamlit interaction check also verified
-recurrence form submission, completion history, successor creation, and session
-persistence across reruns.
+The 26 test cases use fixed dates and cover task storage and completion,
+collection across pets, chronological sorting of out-of-order input, pet/status
+filters, daily and weekly recurrence (including an incomplete next-day task when
+daily care is completed on its due date), recurrence and ownership validation,
+and future-date exclusion. Conflict tests cover overlaps across pets, identical
+start times, completed-history exclusion, and back-to-back intervals. Empty
+owners and pets produce empty schedules. Budget tests cover zero available
+minutes, one minute short, exact fits, skipping oversized tasks, and excluding
+completed tasks from both plans and budget consumption.
+
+**Confidence: 4/5 stars (★★★★☆)** for the tested backend scheduling behavior.
+All automated tests pass, but automated backend tests do not guarantee every UI
+behavior. This run did not check Streamlit forms, rendering, or session-state
+interactions; browser/UI testing is still needed. Invalid durations/priorities
+and timezone-aware scheduling are also outside this suite's coverage.
 
 ## 📐 Smarter Scheduling
 
